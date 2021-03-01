@@ -4,7 +4,7 @@ kind: Namespace
 metadata:
   name: ada-cs-namespace
 ---
-                    # PostgreSQL
+# PostgreSQL
 
 # Volúmen persistente
 apiVersion: v1
@@ -117,3 +117,118 @@ spec:
     - port: 5300
       targetPort: 5432
   type: LoadBalancer
+  ---
+ # Redis
+# Volúmen persistente
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-redis-vol1
+  namespace: ada-cs-namespace
+spec:
+  storageClassName: redis
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/redis-vol1"
+---
+# Reclamo PV
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-redis
+  namespace: ada-cs-namespace
+  labels:
+    app: redis-server
+spec:
+  storageClassName: redis
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: redis
+  namespace: ada-cs-namespace
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+# ConfigMap
+apiVersion: v1 
+kind: ConfigMap 
+metadata:
+  name: redis 
+  namespace: ada-cs-namespace
+  labels:
+    app: redis-server
+data:
+  redis.password: "password"
+  redis.db: "redisdb"
+---
+# Deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deployment
+  namespace: ada-cs-namespace
+  labels:
+    app: redis-server
+spec:
+  selector:
+    matchLabels:
+      app: redis-server
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis-server
+    spec:
+      containers:
+      - image: redis:latest
+        name: redis-db1
+        ports:
+        - containerPort: 6379
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /data
+          name: redis-db-volume1
+        env:
+          - name: REDIS_PASSWORD
+            valueFrom:
+              configMapKeyRef:
+                name: redis
+                key: redis.password   
+          - name: REDIS_DB
+            valueFrom:
+              configMapKeyRef:
+                name: redis
+                key: redis.db
+      volumes:
+      - name: redis-db-volume1
+        persistentVolumeClaim:
+           claimName: pvc-redis
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: ada-cs-namespace
+  labels:
+    app: redis-server
+spec:
+  selector:
+    app: redis-server
+  ports:  
+    - port: 5301
+      targetPort: 6379
+      protocol: TCP
+  type: LoadBalancer
+---
