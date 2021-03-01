@@ -5,7 +5,6 @@ metadata:
   name: ada-cs-namespace
 ---
 # PostgreSQL
-
 # Volúmen persistente
 apiVersion: v1
 kind: PersistentVolume
@@ -117,8 +116,8 @@ spec:
     - port: 5300
       targetPort: 5432
   type: LoadBalancer
-  ---
- # Redis
+---
+# Redis
 # Volúmen persistente
 apiVersion: v1
 kind: PersistentVolume
@@ -233,7 +232,6 @@ spec:
   type: LoadBalancer
 ---
 # MongoDB
-
 # Volúmen persistente
 apiVersion: v1
 kind: PersistentVolume
@@ -353,3 +351,115 @@ spec:
       protocol: TCP
   type: LoadBalancer
 ---
+# MySQL
+# Volúmen persistente
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mysql-vol1
+  namespace: ada-cs-namespace
+spec:
+  storageClassName: mysql
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/mysql-vol1"
+---
+# Reclamo PV
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-mysql
+  namespace: ada-cs-namespace
+spec:
+  storageClassName: mysql
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: mysql
+  namespace: ada-cs-namespace
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql
+  namespace: ada-cs-namespace
+data:
+  mysql.user: root
+  mysql.password: password
+  mysql.db: mysqldb
+---
+# Deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: ada-cs-namespace
+  labels:
+    app: mysql-server
+spec:
+  selector:
+    matchLabels:
+      app: mysql-server
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mysql-server
+    spec:
+      containers:
+      - image: mysql:8
+        name: mysql-db1
+        ports:
+        - containerPort: 3306
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-db-volume1
+        env:
+          - name: MYSQL_USER
+            valueFrom:
+              configMapKeyRef:
+                name: mysql
+                key: mysql.user
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              configMapKeyRef:
+                name: mysql
+                key: mysql.password
+          - name: MYSQL_DATABASE
+            valueFrom:
+              configMapKeyRef:
+                name: mysql
+                key: mysql.db
+      volumes:
+      - name: mysql-db-volume1
+        persistentVolumeClaim:
+          claimName: pvc-mysql
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: ada-cs-namespace
+spec:
+  selector:
+    app: mysql-server
+  ports:
+    - port: 5303
+      targetPort: 3306
+  type: LoadBalancer
