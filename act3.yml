@@ -232,3 +232,124 @@ spec:
       protocol: TCP
   type: LoadBalancer
 ---
+# MongoDB
+
+# Volúmen persistente
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-mongo-vol1
+  namespace: ada-cs-namespace
+spec:
+  storageClassName: mongo
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/mongo-vol1"
+---
+# Reclamo PV
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-mongo
+  namespace: ada-cs-namespace
+  labels:
+    app: mongo-server
+spec:
+  storageClassName: mongo
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: mongo
+  namespace: ada-cs-namespace
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+# ConfigMap
+apiVersion: v1 
+kind: ConfigMap
+metadata:
+  name: mongo 
+  namespace: ada-cs-namespace
+  labels:
+    app: mongo-server
+data:
+  mongo.user: "mongo"
+  mongo.password: "password"
+  mongo.db: "mongodb"
+---
+# Deploy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-deployment
+  namespace: ada-cs-namespace
+  labels:
+    app: mongo-server
+spec:
+  selector:
+    matchLabels:
+      app: mongo-server
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mongo-server
+    spec:
+      containers:
+      - image: mongo:4.1.7
+        name: mongo-db1
+        ports:
+        - containerPort: 27017
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /data/db
+          name: mongo-db-volume1
+        env:
+          - name: MONGO_INITDB_ROOT_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                name: mongo
+                key: mongo.user
+          - name: MONGO_INITDB_ROOT_PASSWORD
+            valueFrom:
+              configMapKeyRef:
+                name: mongo
+                key: mongo.password
+          - name: MONGO_INITDB_ROOT_DB
+            valueFrom:
+              configMapKeyRef:
+                name: mongo
+                key: mongo.db
+      volumes:
+      - name: mongo-db-volume1
+        persistentVolumeClaim:
+           claimName: pvc-mongo
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-service
+  namespace: ada-cs-namespace
+  labels:
+    app: mongo-server
+spec:
+  selector:
+    app: mongo-server
+  ports:  
+    - port: 5302
+      targetPort: 27017
+      protocol: TCP
+  type: LoadBalancer
+---
